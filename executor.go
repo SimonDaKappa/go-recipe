@@ -48,27 +48,27 @@ func (exec *Executor) prepareExecute(ctx *ExecContext, wt WalkType, walked []any
 		return nil, fmt.Errorf("resolving elem of walked type: %w", err)
 	}
 
-	recipe, err := exec.resolveRecipe(wet)
+	rcp, err := exec.resolveRecipe(wet)
 	if err != nil {
 		return nil, fmt.Errorf("resolving recipe: %w", err)
 	}
 
-	if recipe.WalkType != wt {
+	if rcp.WalkType != wt {
 		return nil, ErrWalkTypeMismatch
 	}
 
-	err = exec.applyContext(ctx, recipe)
+	err = exec.applyContext(ctx, rcp)
 	if err != nil {
 		return nil, fmt.Errorf("applying exec context: %w", err)
 	}
 
 	if len(walked) > 1 {
-		for i, walkedArg := range walked {
+		for i, w := range walked {
 			if i == 0 {
 				continue
 			}
 
-			iet, err := exec.elemType(reflect.TypeOf(walkedArg))
+			iet, err := exec.elemType(reflect.TypeOf(w))
 			if err != nil {
 				return nil, fmt.Errorf("walked argument %d: %w", i, err)
 			}
@@ -79,26 +79,26 @@ func (exec *Executor) prepareExecute(ctx *ExecContext, wt WalkType, walked []any
 		}
 	}
 
-	return recipe, nil
+	return rcp, nil
 }
 
-func (exec *Executor) applyContext(ctx *ExecContext, r *Recipe) error {
+func (exec *Executor) applyContext(ctx *ExecContext, rcp *Recipe) error {
 	if ctx == nil {
 		return nil
 	}
 
-	switch r.WalkType {
+	switch rcp.WalkType {
 	case CombineWalk:
 		if ctx.CombinerOverride != nil {
-			r.combiner = ctx.CombinerOverride
+			rcp.combiner = ctx.CombinerOverride
 		}
 	case ApplyWalk:
 		if ctx.ApplierOverride != nil {
-			r.applier = ctx.ApplierOverride
+			rcp.applier = ctx.ApplierOverride
 		}
 	case TransformWalk:
 		if ctx.TransformerOverride != nil {
-			r.transformer = ctx.TransformerOverride
+			rcp.transformer = ctx.TransformerOverride
 		}
 	}
 
@@ -109,43 +109,43 @@ func (exec *Executor) applyContext(ctx *ExecContext, r *Recipe) error {
 //
 // Takes reflect.TypeOf(Walked).Elem() as input, where Walked is a valid pointer to struct.
 func (exec *Executor) resolveRecipe(wet reflect.Type) (*Recipe, error) {
-	recipe, err := exec.builder.GetOrBuild(wet)
+	rcp, err := exec.builder.GetOrBuild(wet)
 	if err != nil {
 		return nil, err
 	}
 
-	if !recipe.resolved {
-		err := exec.resolveTree(recipe.Root, recipe.Arity)
+	if !rcp.resolved {
+		err := exec.resolveTree(rcp.Root, rcp.Arity)
 		if err != nil {
 			return nil, fmt.Errorf("resolving exec tree: %w", err)
 		}
 	}
 
-	recipe.resolved = true
+	rcp.resolved = true
 
-	err = exec.builder.Set(wet, recipe)
+	err = exec.builder.Set(wet, rcp)
 	if err != nil {
 		return nil, err
 	}
 
-	return recipe, nil
+	return rcp, nil
 }
 
-func (exec *Executor) resolveTree(etree *ExecTree, arity OpArity) error {
-	for _, lazyOp := range etree.LazyOps {
+func (exec *Executor) resolveTree(eTree *ExecTree, arity OpArity) error {
+	for _, lazyOp := range eTree.LazyOps {
 		rOp, err := exec.reg.resolveOperation(lazyOp)
 		if err != nil {
-			return fmt.Errorf("field %s, resolving operation %s: %w", etree.Name, lazyOp.Name, err)
+			return fmt.Errorf("field %s, resolving operation %s: %w", eTree.Name, lazyOp.Name, err)
 		}
 
 		if rOp.Op.Arity() != arity {
-			return fmt.Errorf("field %s, operation %s arity %d does not match recipe arity %d", etree.Name, lazyOp.Name, rOp.Op.Arity(), arity)
+			return fmt.Errorf("field %s, operation %s arity %d does not match recipe arity %d", eTree.Name, lazyOp.Name, rOp.Op.Arity(), arity)
 		}
 
-		etree.Operations = append(etree.Operations, *rOp)
+		eTree.Operations = append(eTree.Operations, *rOp)
 	}
 
-	for _, child := range etree.Children {
+	for _, child := range eTree.Children {
 		err := exec.resolveTree(child, arity)
 		if err != nil {
 			return err
@@ -175,20 +175,20 @@ func (exec *Executor) elemType(t reflect.Type) (reflect.Type, error) {
 	return t.Elem(), nil
 }
 
-func (exec *Executor) extractChildPointers(etree *ExecTree, wlPtrs []unsafe.Pointer) []unsafe.Pointer {
-	wcPtrs := make([]unsafe.Pointer, len(wlPtrs))
-	for i, wlPtr := range wlPtrs {
-		wcPtrs[i] = etree.structAddressor(wlPtr)
+func (exec *Executor) extractChildPointers(eTree *ExecTree, wPtrs []unsafe.Pointer) []unsafe.Pointer {
+	cPtrs := make([]unsafe.Pointer, len(wPtrs))
+	for i, wPtr := range wPtrs {
+		cPtrs[i] = eTree.structAddressor(wPtr)
 	}
-	return wcPtrs
+	return cPtrs
 }
 
-func (exec *Executor) extractFieldValues(etree *ExecTree, wlPtrs []unsafe.Pointer) []any {
-	wlFields := make([]any, len(wlPtrs))
-	for i, structPtr := range wlPtrs {
-		wlFields[i] = etree.fieldExtractor(structPtr)
+func (exec *Executor) extractFieldValues(eTree *ExecTree, wPtrs []unsafe.Pointer) []any {
+	wFields := make([]any, len(wPtrs))
+	for i, wPtr := range wPtrs {
+		wFields[i] = eTree.fieldExtractor(wPtr)
 	}
-	return wlFields
+	return wFields
 }
 
 //--------------------------------------------------------------------------------
@@ -198,42 +198,39 @@ func (exec *Executor) extractFieldValues(etree *ExecTree, wlPtrs []unsafe.Pointe
 //--------------------------------------------------------------------------------
 
 func (exec *Executor) ExecuteCombineWalk(ctx *ExecContext, walked []any) (any, error) {
-
-	recipe, err := exec.prepareExecute(ctx, CombineWalk, walked)
+	rcp, err := exec.prepareExecute(ctx, CombineWalk, walked)
 	if err != nil {
 		return nil, fmt.Errorf("preparing combine execute: %w", err)
 	}
 
-	wlPointers := make([]unsafe.Pointer, len(walked))
+	wPtrs := make([]unsafe.Pointer, len(walked))
 	for i, w := range walked {
-		wlPointers[i] = unsafe.Pointer(reflect.ValueOf(w).Pointer())
+		wPtrs[i] = unsafe.Pointer(reflect.ValueOf(w).Pointer())
 	}
 
-	acc, err := exec.walkCombiner(recipe.combiner, recipe.Root, wlPointers)
+	acc, err := exec.walkCombiner(rcp.combiner, rcp.Root, wPtrs)
 	if err != nil {
 		return nil, fmt.Errorf("executing combine walk: %w", err)
 	}
 
-	zero := recipe.combiner.Zero()
-	acc = recipe.combiner.Combine(zero, acc)
-
+	acc = rcp.combiner.Combine(rcp.combiner.Zero(), acc)
 	return acc, nil
 }
 
 // walkCombiner is the internal implementation of the combine walk.
 //
 // wlPtrs: slice of unsafe.Pointer to the current struct level (child of root) being walked.
-func (exec *Executor) walkCombiner(combiner Combiner, etree *ExecTree, wlPtrs []unsafe.Pointer) (any, error) {
+func (exec *Executor) walkCombiner(combiner Combiner, eTree *ExecTree, wPtrs []unsafe.Pointer) (any, error) {
 	acc := combiner.Zero()
 
 	// Struct node
-	if etree.hasChild() {
-		for _, child := range etree.Children {
-			wcPtrs := exec.extractChildPointers(child, wlPtrs)
+	if eTree.hasChild() {
+		for _, cTree := range eTree.Children {
+			cPtrs := exec.extractChildPointers(cTree, wPtrs)
 
-			res, err := exec.walkCombiner(combiner, child, wcPtrs)
+			res, err := exec.walkCombiner(combiner, cTree, cPtrs)
 			if err != nil {
-				return nil, fmt.Errorf("executing struct child %s: %w", child.Name, err)
+				return nil, fmt.Errorf("executing struct child %s: %w", cTree.Name, err)
 			}
 			acc = combiner.Combine(acc, res)
 		}
@@ -241,28 +238,28 @@ func (exec *Executor) walkCombiner(combiner Combiner, etree *ExecTree, wlPtrs []
 	}
 
 	// Leaf node
-	if etree.hasOperation() {
-		wlFields := exec.extractFieldValues(etree, wlPtrs)
+	if eTree.hasOperation() {
+		wFields := exec.extractFieldValues(eTree, wPtrs)
 
-		for _, operation := range etree.Operations {
-			res, err := operation.Op.Execute(operation.Opts, wlFields...) // Must unpack slice
+		for _, operation := range eTree.Operations {
+			res, err := operation.Op.Execute(operation.Opts, wFields...) // Must unpack slice
 			if err != nil {
 				// Handle opts here
 				if false /*opts placehold*/ {
 
 				} else {
-					return nil, fmt.Errorf("executing operation %s on field %s: %w", operation.Name, etree.Name, err)
+					return nil, fmt.Errorf("executing operation %s on field %s: %w", operation.Name, eTree.Name, err)
 				}
 			}
 
-			switch etree.OpStrategy {
+			switch eTree.OpStrategy {
 			case FirstSuccess:
 				acc = res
 				return acc, nil
 			case AllOrNothing:
 				acc = combiner.Combine(acc, res)
 			default:
-				return nil, fmt.Errorf("unknown multi-op strategy %d", etree.OpStrategy)
+				return nil, fmt.Errorf("unknown multi-op strategy %d", eTree.OpStrategy)
 			}
 		}
 	}
@@ -270,18 +267,18 @@ func (exec *Executor) walkCombiner(combiner Combiner, etree *ExecTree, wlPtrs []
 	return acc, nil
 }
 
-func (exec *Executor) ExecuteApplyWalk(ctx *ExecContext, walked []any, values []any) error {
-	recipe, err := exec.prepareExecute(ctx, ApplyWalk, walked)
+func (exec *Executor) ExecuteApplyWalk(ctx *ExecContext, walked []any, vals []any) error {
+	rcp, err := exec.prepareExecute(ctx, ApplyWalk, walked)
 	if err != nil {
 		return fmt.Errorf("preparing apply execute: %w", err)
 	}
 
-	wlStructPtrs := make([]unsafe.Pointer, len(walked))
+	wPtrs := make([]unsafe.Pointer, len(walked))
 	for i, w := range walked {
-		wlStructPtrs[i] = unsafe.Pointer(reflect.ValueOf(w).Pointer())
+		wPtrs[i] = unsafe.Pointer(reflect.ValueOf(w).Pointer())
 	}
 
-	return exec.walkApplier(recipe.applier, recipe.Root, wlStructPtrs, values)
+	return exec.walkApplier(rcp.applier, rcp.Root, wPtrs, vals)
 }
 
 // walkApplier is the internal implementation of the apply walk.
@@ -289,22 +286,22 @@ func (exec *Executor) ExecuteApplyWalk(ctx *ExecContext, walked []any, values []
 // Applies results of operations to the walked structs using the provided applier.
 //
 // wlPtrs: slice of unsafe.Pointer to the current struct level (child of root) being walked.
-func (exec *Executor) walkApplier(aplr Applier, etree *ExecTree, wlPtrs []unsafe.Pointer, vals []any) error {
+func (exec *Executor) walkApplier(aplr Applier, eTree *ExecTree, wPtrs []unsafe.Pointer, vals []any) error {
 
-	if etree.hasChild() {
-		for _, ctree := range etree.Children {
-			wcPtrs := exec.extractChildPointers(ctree, wlPtrs)
+	if eTree.hasChild() {
+		for _, cTree := range eTree.Children {
+			cPtrs := exec.extractChildPointers(cTree, wPtrs)
 
-			err := exec.walkApplier(aplr, ctree, wcPtrs, vals)
+			err := exec.walkApplier(aplr, cTree, cPtrs, vals)
 			if err != nil {
-				return fmt.Errorf("executing struct child %s: %w", ctree.Name, err)
+				return fmt.Errorf("executing struct child %s: %w", cTree.Name, err)
 			}
 		}
 		return nil
 	}
 
-	if etree.hasOperation() {
-		for _, operation := range etree.Operations {
+	if eTree.hasOperation() {
+		for _, operation := range eTree.Operations {
 			res, err := operation.Op.Execute(operation.Opts, vals...)
 			if err != nil {
 				// Handle opts here
@@ -315,20 +312,20 @@ func (exec *Executor) walkApplier(aplr Applier, etree *ExecTree, wlPtrs []unsafe
 				}
 			}
 
-			for _, wlPtr := range wlPtrs {
-				err := aplr.Apply(wlPtr, etree.fieldOffset, etree.fieldType, res)
+			for _, wPtr := range wPtrs {
+				err := aplr.Apply(wPtr, eTree.fieldOffset, eTree.fieldType, res)
 				if err != nil {
-					return fmt.Errorf("applying result to field %s: %w", etree.Name, err)
+					return fmt.Errorf("applying result to field %s: %w", eTree.Name, err)
 				}
 			}
 
-			switch etree.OpStrategy {
+			switch eTree.OpStrategy {
 			case FirstSuccess:
 				return nil
 			case AllOrNothing:
 				continue
 			default:
-				return fmt.Errorf("unknown multi-op strategy %d", etree.OpStrategy)
+				return fmt.Errorf("unknown multi-op strategy %d", eTree.OpStrategy)
 			}
 		}
 	}
