@@ -60,11 +60,11 @@ type ExecTree struct {
 	//
 	// Only non-nil if this is a leaf node (no Children)
 	fieldExtractor func(structPtr unsafe.Pointer) any
-	// structExtractor: pre-compiled struct extractor to avoid reflect.NewAt overhead.
+	// structAddressor: pre-compiled struct extractor to avoid reflect.NewAt overhead.
 	// Takes pointer to parent struct, returns pointer to child struct
 	//
 	// Only non-nil if this is a struct node (has Children)
-	structExtractor func(structPtr unsafe.Pointer) unsafe.Pointer
+	structAddressor func(structPtr unsafe.Pointer) unsafe.Pointer
 }
 
 func (t *ExecTree) isStruct() bool {

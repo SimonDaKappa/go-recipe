@@ -194,7 +194,7 @@ func (exec *CombineExecutor) executeWalk(combiner Combiner, etree *ExecTree, wSt
 
 			childStructPtrs := make([]unsafe.Pointer, len(wStructPtrs))
 			for i, structPtr := range wStructPtrs {
-				childStructPtrs[i] = child.structExtractor(structPtr)
+				childStructPtrs[i] = child.structAddressor(structPtr)
 			}
 
 			res, err := exec.executeWalk(combiner, child, childStructPtrs)
@@ -263,7 +263,7 @@ func (exec *ApplyExecutor) executeWalk(applier Applier, etree *ExecTree, wStruct
 
 			childStructPtrs := make([]unsafe.Pointer, len(wStructPtrs))
 			for i, structPtr := range wStructPtrs {
-				childStructPtrs[i] = child.structExtractor(structPtr)
+				childStructPtrs[i] = child.structAddressor(structPtr)
 			}
 
 			err := exec.executeWalk(applier, child, childStructPtrs, values)

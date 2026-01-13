@@ -92,7 +92,7 @@ func (b *Builder) Build(t reflect.Type, cache bool) (*Recipe, error) {
 }
 
 func (b *Builder) buildRecipe(t reflect.Type) (*Recipe, error) {
-	etree, err := b.buildStructTree(t)
+	etree, err := b.buildTree(t)
 	if err != nil {
 		return nil, fmt.Errorf("building struct recipe for type %s: %w", t.Name(), err)
 	}
@@ -127,7 +127,7 @@ func (b *Builder) buildRecipe(t reflect.Type) (*Recipe, error) {
 	return recipe, nil
 }
 
-func (b *Builder) buildStructTree(t reflect.Type) (*ExecTree, error) {
+func (b *Builder) buildTree(t reflect.Type) (*ExecTree, error) {
 
 	// Assume struct, iterate fields
 	etree := &ExecTree{
@@ -144,7 +144,7 @@ func (b *Builder) buildStructTree(t reflect.Type) (*ExecTree, error) {
 		}
 
 		if field.Type.Kind() == reflect.Struct {
-			ctree, err := b.buildStructTree(field.Type)
+			ctree, err := b.buildTree(field.Type)
 			if err != nil {
 				return nil, fmt.Errorf("field %s, child exec tree: %w", field.Name, err)
 			}
@@ -155,14 +155,14 @@ func (b *Builder) buildStructTree(t reflect.Type) (*ExecTree, error) {
 			ctree.fieldOffset = field.Offset
 			ctree.fieldKind = field.Type.Kind()
 
-			// Pre-compile struct extractor for child struct
-			b.compileStructExtractor(ctree)
+			// Pre-compile struct getter to actual ptr for child struct
+			b.compileStructAddressor(ctree)
 
 			etree.Children = append(etree.Children, ctree)
 			continue
 		}
 
-		ftree, err := b.buildFieldTree(field)
+		ftree, err := b.buildField(field)
 		if err != nil {
 			return nil, fmt.Errorf("field %s, exec tree: %w", field.Name, err)
 		}
@@ -177,7 +177,7 @@ func (b *Builder) buildStructTree(t reflect.Type) (*ExecTree, error) {
 		ftree.fieldOffset = field.Offset
 		ftree.fieldKind = field.Type.Kind()
 
-		// Pre-compile field extractor for leaf field
+		// Pre-compile field extractor for leaf field from parent ptr
 		b.compileFieldExtractor(ftree)
 
 		etree.Children = append(etree.Children, ftree)
@@ -186,7 +186,7 @@ func (b *Builder) buildStructTree(t reflect.Type) (*ExecTree, error) {
 	return etree, nil
 }
 
-func (b *Builder) buildFieldTree(field reflect.StructField) (*ExecTree, error) {
+func (b *Builder) buildField(field reflect.StructField) (*ExecTree, error) {
 	tag := field.Tag.Get(b.grammar.Key())
 
 	if tag == "" || tag == "-" {
@@ -224,9 +224,9 @@ func (b *Builder) buildFieldTree(field reflect.StructField) (*ExecTree, error) {
 // Used to get pointer to child struct from parent struct pointer
 //
 // Make sure etree.isStruct() == true before calling this
-func (b *Builder) compileStructExtractor(etree *ExecTree) error {
+func (b *Builder) compileStructAddressor(etree *ExecTree) error {
 	offset := etree.fieldOffset
-	etree.structExtractor = func(structPtr unsafe.Pointer) unsafe.Pointer {
+	etree.structAddressor = func(structPtr unsafe.Pointer) unsafe.Pointer {
 		return unsafe.Pointer(uintptr(structPtr) + offset)
 	}
 
