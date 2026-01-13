@@ -31,8 +31,8 @@ type ExecContext struct {
 
 // ExecTree now supports multiple operations per field
 type ExecTree struct {
-	// Field name in the struct
-	Field string
+	// Name name in the struct
+	Name string
 
 	fieldIdx    int          // Index in parent struct.Fields
 	fieldOffset uintptr      // Offset in parent struct
@@ -67,12 +67,12 @@ type ExecTree struct {
 	structAddressor func(structPtr unsafe.Pointer) unsafe.Pointer
 }
 
-func (t *ExecTree) isStruct() bool {
-	return t.Children != nil && len(t.Children) > 0
+func (t *ExecTree) hasChild() bool {
+	return len(t.Children) > 0
 }
 
-func (t *ExecTree) hasOperations() bool {
-	return t.Operations != nil && len(t.Operations) > 0
+func (t *ExecTree) hasOperation() bool {
+	return len(t.Operations) > 0
 }
 
 func (t *ExecTree) Strategy() MultiOpStrategy {

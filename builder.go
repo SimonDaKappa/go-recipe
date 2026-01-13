@@ -131,7 +131,7 @@ func (b *Builder) buildTree(t reflect.Type) (*ExecTree, error) {
 
 	// Assume struct, iterate fields
 	etree := &ExecTree{
-		Field:    t.Name(),
+		Name:     t.Name(),
 		LazyOps:  []LazyOperation{},
 		Children: []*ExecTree{},
 	}
@@ -149,7 +149,7 @@ func (b *Builder) buildTree(t reflect.Type) (*ExecTree, error) {
 				return nil, fmt.Errorf("field %s, child exec tree: %w", field.Name, err)
 			}
 
-			ctree.Field = field.Name
+			ctree.Name = field.Name
 			ctree.fieldIdx = i
 			ctree.fieldType = field.Type
 			ctree.fieldOffset = field.Offset
@@ -213,7 +213,7 @@ func (b *Builder) buildField(field reflect.StructField) (*ExecTree, error) {
 	}
 
 	return &ExecTree{
-		Field:      field.Name,
+		Name:       field.Name,
 		LazyOps:    orderedOps,
 		Operations: []ResolvedOperation{},
 		Children:   []*ExecTree{},

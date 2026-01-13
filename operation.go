@@ -41,6 +41,14 @@ const (
 type Operation interface {
 	Arity() OpArity
 
+	// Execute performs the operation on the provided sources
+	//
+	// sources must match the arity of the operation.
+	//
+	// Returns the result of the operation, or an error if execution failed.
+	//
+	// WARNING: You MUST unpack the sources if a slice when passing to Execute,
+	// e.g., op.Execute(opts, sources...) NOT op.Execute(opts, sources)
 	Execute(opts OpOpts, sources ...any) (any, error)
 }
 
