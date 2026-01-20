@@ -82,6 +82,11 @@ func (exec *Executor) prepareExecute(ctx *ExecContext, wt WalkType, walked []any
 	return rcp, nil
 }
 
+// applyContent configures a recipe with some set of opinionated behavior,
+// on a per-call basis to [Executor.Execute].
+//
+// WARNING: This must always be called AFTER recipe resolution,
+// so as to not taint the cached recipe in the builder.
 func (exec *Executor) applyContext(ctx *ExecContext, rcp *Recipe) error {
 	if ctx == nil {
 		return nil
@@ -286,13 +291,13 @@ func (exec *Executor) ExecuteApplyWalk(ctx *ExecContext, walked []any, vals []an
 // Applies results of operations to the walked structs using the provided applier.
 //
 // wlPtrs: slice of unsafe.Pointer to the current struct level (child of root) being walked.
-func (exec *Executor) walkApplier(aplr Applier, eTree *ExecTree, wPtrs []unsafe.Pointer, vals []any) error {
+func (exec *Executor) walkApplier(applier Applier, eTree *ExecTree, wPtrs []unsafe.Pointer, vals []any) error {
 
 	if eTree.hasChild() {
 		for _, cTree := range eTree.Children {
 			cPtrs := exec.extractChildPointers(cTree, wPtrs)
 
-			err := exec.walkApplier(aplr, cTree, cPtrs, vals)
+			err := exec.walkApplier(applier, cTree, cPtrs, vals)
 			if err != nil {
 				return fmt.Errorf("executing struct child %s: %w", cTree.Name, err)
 			}
@@ -313,7 +318,7 @@ func (exec *Executor) walkApplier(aplr Applier, eTree *ExecTree, wPtrs []unsafe.
 			}
 
 			for _, wPtr := range wPtrs {
-				err := aplr.Apply(wPtr, eTree.fieldOffset, eTree.fieldType, res)
+				err := applier.Apply(wPtr, eTree.fieldOffset, eTree.fieldType, res)
 				if err != nil {
 					return fmt.Errorf("applying result to field %s: %w", eTree.Name, err)
 				}

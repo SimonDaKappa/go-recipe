@@ -193,21 +193,21 @@ func (b *Builder) buildField(field reflect.StructField) (*ExecTree, error) {
 		return nil, ErrEmptyTag
 	}
 
-	opStrs, err := b.grammar.SplitByOperation(tag)
+	opStrs, err := b.grammar.Split(tag)
 	if err != nil {
 		return nil, fmt.Errorf("splitting operations for field %s: %w", field.Name, err)
 	}
 
 	var lazyOps []LazyOperation
 	for _, opStr := range opStrs {
-		lazyOp, err := b.grammar.ParseOperation(opStr)
+		lazyOp, err := b.grammar.Parse(opStr)
 		if err != nil {
 			return nil, fmt.Errorf("parsing operation %s for field %s: %w", opStr, field.Name, err)
 		}
 		lazyOps = append(lazyOps, lazyOp)
 	}
 
-	orderedOps, err := b.grammar.OrderOperations(lazyOps)
+	orderedOps, err := b.grammar.Order(lazyOps)
 	if err != nil {
 		return nil, fmt.Errorf("ordering operations for field %s: %w", field.Name, err)
 	}
