@@ -46,6 +46,19 @@ const (
 	TransformWalk
 )
 
+func (wt WalkType) String() string {
+	switch wt {
+	case CombineWalk:
+		return "CombineWalk"
+	case ApplyWalk:
+		return "ApplyWalk"
+	case TransformWalk:
+		return "TransformWalk"
+	default:
+		return "Unknown"
+	}
+}
+
 // Combiner coalesces multiple operation results into final output
 // Used for RecipeWalk recipes.
 type Combiner interface {
