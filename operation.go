@@ -20,6 +20,8 @@ var (
 	ErrOpStratInvalid = fmt.Errorf("invalid operation strategy")
 )
 
+type OpMod uint8
+
 type OpArity uint8
 
 const (
@@ -49,11 +51,10 @@ type Operation interface {
 	//
 	// WARNING: You MUST unpack the sources if a slice when passing to Execute,
 	// e.g., op.Execute(opts, sources...) NOT op.Execute(opts, sources)
-	Execute(opts OpOpts, sources ...any) (any, error)
+	Execute(opts *OpOpts, sources ...any) (any, error)
 }
 
-type OpOpts interface {
-	OmitError() bool
+type OpOpts struct {
 }
 
 // LazyOperation is a reference to an operation with its execution metadata
@@ -63,7 +64,7 @@ type OpOpts interface {
 // may be configured to pre-resolve all operation names to ensure they exist.
 type LazyOperation struct {
 	Name string // e.g., "bind=header", "mask=email", "validate=uuid"
-	Opts OpOpts
+	Opts *OpOpts
 }
 
 type ResolvedOperation struct {

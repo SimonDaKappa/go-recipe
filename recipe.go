@@ -17,16 +17,12 @@ type Recipe struct {
 	// See: [RecipeWalkType]
 	WalkType WalkType
 
+	StateController ExecStateController
+
 	combiner    Combiner
 	applier     Applier
 	transformer Transformer
 	resolved    bool
-}
-
-type ExecContext struct {
-	CombinerOverride    Combiner
-	ApplierOverride     Applier
-	TransformerOverride Transformer
 }
 
 // ExecTree now supports multiple operations per field
@@ -46,9 +42,6 @@ type ExecTree struct {
 	// resolving. What is actually called during recipe
 	// execution.
 	Operations []ResolvedOperation
-	// Strategy for multiple operations on this field.
-	// Determines how multiple operations are executed.
-	OpStrategy MultiOpStrategy
 
 	// Tree structure for nested fields
 	//
@@ -73,10 +66,6 @@ func (t *ExecTree) hasChild() bool {
 
 func (t *ExecTree) hasOperation() bool {
 	return len(t.Operations) > 0
-}
-
-func (t *ExecTree) Strategy() MultiOpStrategy {
-	return t.OpStrategy
 }
 
 func NoopExecTree(tree *ExecTree) error {

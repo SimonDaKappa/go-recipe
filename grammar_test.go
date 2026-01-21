@@ -64,3 +64,20 @@ type test_SimpleBoolGrammar struct{ test_BaseGrammar }
 //   - Only one operation per tag
 //   - No options ([FirstSuccess] strategy only)
 type test_SimpleSelfFieldGrammar struct{ test_BaseGrammar }
+
+func foo() {
+	_, _ = NewGrammarConfig().
+		SetFlatStructure().
+		SetFormat(FlatFmtEnclosed, PairSepSquare).
+		SetKey("simple_string_grammar").
+		SetDescription("simple_desc").
+		SetWalkType(ApplyWalk).
+		SetCombiner(&StringConcatCombiner{}).
+		AddSharedModifier("omitnil", ModFmtKeyed, ModUseExec, ModKindBool).
+		AddSharedModifier("default", ModFmtKV, ModUseExec, ModKindConverted).
+		AddOperation("to_upper").
+		AddOperationModifier("to_upper", "omitnil", ModFmtKeyed, ModUseExec, ModKindBool, false).
+		AddOperationModifier("to_upper", "default", ModFmtKV, ModUseExec, ModKindConverted, false).
+		Build()
+
+}

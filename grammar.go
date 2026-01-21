@@ -184,18 +184,28 @@ var (
 	StructureHierarchy GrammarStructure = 1
 )
 
+type FlatGrammarTemplate uint8
+
+const (
+	FGTInlineComma FlatGrammarTemplate = iota + 1
+	FGTInlineSemicolon
+	FGTPairSquare
+	FGTPairCurly
+	FGTPairParen
+)
+
 type FlatGrammarFormat uint8
 
 var (
 	// `<grammar_key>:<op_str1><custom_delimiter><op_str2>...`\
 	//
 	// $$$TODO $$$SIMON: Add delimiter capture-group pattern compiling
-	FlatFormatDelimited FlatGrammarFormat = 1
+	FlatFmtDelimited FlatGrammarFormat = 1
 
 	// `<grammar_key>:[<op_str1>],[<op_str2>]`
 	//
 	// $$$TODO $$$SIMON: Add encloser capture-group pattern compiling
-	FlatFormatEnclosed FlatGrammarFormat = 3
+	FlatFmtEnclosed FlatGrammarFormat = 3
 )
 
 // ALWAYS len 2
@@ -210,6 +220,12 @@ const (
 	InlineSepComma     FlatGrammarSeparator = ","
 	InlineSepPipe      FlatGrammarSeparator = "|"
 	InlineSepSemicolon FlatGrammarSeparator = ";"
+)
+
+type HierarchyGrammarTemplate uint8
+
+const (
+	HGTJSON HierarchyGrammarTemplate = iota + 1
 )
 
 type HierarchyGrammarFormat uint8
@@ -227,7 +243,7 @@ const (
 	//    ]
 	//  }"
 	// Note: reflect ONLY tracks the depth of quotes if properly escaped in values.
-	HierarchyFormatJSON HierarchyGrammarFormat = iota + 1
+	HierarchyFmtJSON HierarchyGrammarFormat = iota + 1
 )
 
 // $$$TODO $$$SIMON: Add arities to top-level grammar pattern compiler.
@@ -259,20 +275,20 @@ const (
 	//
 	// e.g., in `bind=header,omitempty,default=3`, `omitempty` and `default`
 	// are used by the [Executor] to handle empty values
-	ModifierUseExecution ModifierUse = iota + 1
+	ModUseExec ModifierUse = iota + 1
 
 	// Modifier is used by the [Operation] itself during its processing.
 	//
 	// e.g., in `mask:"email,density=0.8"`, `density` could be used by the email
 	// masking [Operation] to mask 80% of the email address characters.
-	ModifierUseOperation
+	ModUseOp
 )
 
 func (mu ModifierUse) String() string {
 	switch mu {
-	case ModifierUseExecution:
+	case ModUseExec:
 		return "Execution"
-	case ModifierUseOperation:
+	case ModUseOp:
 		return "Operation"
 	default:
 		return "Unknown"
@@ -283,28 +299,22 @@ func (mu ModifierUse) String() string {
 type ModifierFormat uint8
 
 const (
-	// `<modifier_key>=<modifier_value>`
+	// `<modifier_key><mod_kv_delim><modifier_value>`
 	//
 	// Can be used with any [ModifierKind]
-	ModFormatKVOnly ModifierFormat = iota + 1
+	ModFmtKV ModifierFormat = iota + 1
 
 	// `<modifier_key>` (implies boolean true)
 	//
-	// # Can only be used with [ModKindBool]
-	ModFormatKeyOnly
-
-	// Mix of both KV and Key-Only modifiers.
-	//
-	// Can be used with any [ModifierKind], but Key-Only
-	// modifiers must be of type [ModKindBool]
-	ModFormatMixed ModifierFormat = 0xFF
+	// Can only be used with [ModKindBool]
+	ModFmtKeyed
 )
 
 func (mf ModifierFormat) String() string {
 	switch mf {
-	case ModFormatKVOnly:
+	case ModFmtKV:
 		return "Key-Value"
-	case ModFormatKeyOnly:
+	case ModFmtKeyed:
 		return "Key-Only"
 	default:
 		return "Unknown"
@@ -387,11 +397,18 @@ type ModifierSpec struct {
 	modkey string
 	use    ModifierUse
 	kind   ModifierKind
+	format ModifierFormat
+}
+
+type OpModifierSpec struct {
+	ModifierSpec
+	overrideShared bool
 }
 
 type OperationSpec struct {
 	opkey    string
-	modSpecs map[string]ModifierSpec
+	arity    OpArity
+	modSpecs map[string]OpModifierSpec
 }
 
 type GrammarBuildStage uint8
@@ -438,24 +455,27 @@ type GrammarConfig interface {
 	SetCombiner(combiner Combiner) GrammarConfig
 	SetApplier(applier Applier) GrammarConfig
 	SetTransformer(transformer Transformer) GrammarConfig
-	SetArity(arity GrammarArity) GrammarConfig
-	SetModifierFormat(format ModifierFormat) GrammarConfig
-	SetSharedModifier(modkey string, use ModifierUse, kind ModifierKind) GrammarConfig
-	SetCustomModifier(opkey string, modkey string, use ModifierUse, kind ModifierKind) GrammarConfig
+	SetMultiOpStrategy(strategy MultiOpStrategy) GrammarConfig
+	SetOpArity(arity OpArity) GrammarConfig
+	SetMaxOperations(maxOps uint8) GrammarConfig
 	SetFlatStructure() FlatGrammarConfig
 	SetHierarchyStructure() HierarchyGrammarConfig
+	AddSharedModifier(modkey string, fmt ModifierFormat, use ModifierUse, kind ModifierKind) GrammarConfig
+	AddOperation(opkey string) GrammarConfig
+	AddOperationModifier(opkey string, modkey string, fmt ModifierFormat, use ModifierUse, kind ModifierKind, override bool) GrammarConfig
+	OverrideExecController(controller ExecStateController) GrammarConfig
+	WrapExecController(wrapper ExecStateController, callBefore bool) GrammarConfig
+	Build() (Grammar, error)
 }
 
 type FlatGrammarConfig interface {
 	GrammarConfig
 	SetFormat(fmt FlatGrammarFormat, sep FlatGrammarSeparator) FlatGrammarConfig
-	Build() (Grammar, error)
 }
 
 type HierarchyGrammarConfig interface {
 	GrammarConfig
 	SetFormat(fmt HierarchyGrammarFormat) HierarchyGrammarConfig
-	Build() (Grammar, error)
 }
 
 type grammarConfig struct {
@@ -467,9 +487,11 @@ type grammarConfig struct {
 	applier     Applier
 	transformer Transformer
 
-	arity      GrammarArity
-	modformat  ModifierFormat
+	arity      OpArity
+	maxOps     uint8
 	sharedMods map[string]ModifierSpec
+	mstrategy  MultiOpStrategy
+	execCtrl   ExecStateController
 
 	// Used only if a specific set of operations need additional
 	// specification beyond the default modifier format.
@@ -490,7 +512,7 @@ type hierarchyGrammarConfig struct {
 	format HierarchyGrammarFormat
 }
 
-func NewGrammarConfig() *grammarConfig {
+func NewGrammarConfig() GrammarConfig {
 	return &grammarConfig{}
 }
 
@@ -524,30 +546,32 @@ func (cfg *grammarConfig) SetTransformer(transformer Transformer) GrammarConfig 
 	return cfg
 }
 
-func (cfg *grammarConfig) SetArity(arity GrammarArity) GrammarConfig {
+func (cfg *grammarConfig) SetOpArity(arity OpArity) GrammarConfig {
 	cfg.arity = arity
 	return cfg
 }
 
-func (cfg *grammarConfig) SetModifierFormat(format ModifierFormat) GrammarConfig {
-	cfg.modformat = format
+func (cfg *grammarConfig) SetMultiOpStrategy(strategy MultiOpStrategy) GrammarConfig {
+	cfg.mstrategy = strategy
 	return cfg
 }
 
-func (cfg *grammarConfig) SetSharedModifier(modkey string, use ModifierUse, kind ModifierKind) GrammarConfig {
+func (cfg *grammarConfig) AddSharedModifier(modkey string, fmt ModifierFormat, use ModifierUse, kind ModifierKind) GrammarConfig {
 
 	if cfg.sharedMods == nil {
 		cfg.sharedMods = make(map[string]ModifierSpec)
 	}
 
-	spec, ok := cfg.sharedMods[modkey]
-	if !ok {
+	spec, exists := cfg.sharedMods[modkey]
+	if !exists {
 		spec = ModifierSpec{
 			modkey: modkey,
+			format: fmt,
 			use:    use,
 			kind:   kind,
 		}
 	} else {
+		spec.format = fmt
 		spec.use = use
 		spec.kind = kind
 	}
@@ -555,33 +579,98 @@ func (cfg *grammarConfig) SetSharedModifier(modkey string, use ModifierUse, kind
 	return cfg
 }
 
-func (cfg *grammarConfig) SetCustomModifier(opkey string, modkey string, use ModifierUse, kind ModifierKind) GrammarConfig {
+func (cfg *grammarConfig) AddOperation(opkey string) GrammarConfig {
 	if cfg.customOpSpecs == nil {
 		cfg.customOpSpecs = make(map[string]OperationSpec)
 	}
 
-	opSpec, ok := cfg.customOpSpecs[opkey]
-	if !ok {
+	_, exists := cfg.customOpSpecs[opkey]
+	if !exists {
+		opSpec := OperationSpec{
+			opkey:    opkey,
+			modSpecs: make(map[string]OpModifierSpec),
+		}
+		cfg.customOpSpecs[opkey] = opSpec
+	}
+
+	return cfg
+}
+
+func (cfg *grammarConfig) SetMaxOperations(maxOps uint8) GrammarConfig {
+	cfg.maxOps = maxOps
+	return cfg
+}
+
+func (cfg *grammarConfig) AddOperationModifier(
+	opkey string,
+	modkey string,
+	fmt ModifierFormat,
+	use ModifierUse,
+	kind ModifierKind,
+	override bool,
+) GrammarConfig {
+	if cfg.customOpSpecs == nil {
+		cfg.customOpSpecs = make(map[string]OperationSpec)
+	}
+
+	opSpec, exists := cfg.customOpSpecs[opkey]
+	if !exists {
 		opSpec = OperationSpec{
 			opkey:    opkey,
-			modSpecs: make(map[string]ModifierSpec),
+			modSpecs: make(map[string]OpModifierSpec),
 		}
 	}
 
-	modSpec, ok := opSpec.modSpecs[modkey]
-	if !ok {
-		modSpec = ModifierSpec{
-			modkey: modkey,
-			use:    use,
-			kind:   kind,
+	modSpec, exists := opSpec.modSpecs[modkey]
+	if !exists {
+		modSpec = OpModifierSpec{
+			ModifierSpec: ModifierSpec{
+				modkey: modkey,
+				use:    use,
+				kind:   kind,
+				format: fmt,
+			},
+			overrideShared: override,
 		}
 	} else {
 		modSpec.use = use
 		modSpec.kind = kind
+		modSpec.format = fmt
+		modSpec.overrideShared = override
 	}
 
 	opSpec.modSpecs[modkey] = modSpec
 	cfg.customOpSpecs[opkey] = opSpec
+	return cfg
+}
+
+func (cfg *grammarConfig) OverrideExecController(controller ExecStateController) GrammarConfig {
+	cfg.execCtrl = controller
+	return cfg
+}
+
+func (cfg *grammarConfig) WrapExecController(wrapper ExecStateController, callBefore bool) GrammarConfig {
+	previous := cfg.execCtrl
+	if previous == nil {
+		previous = func(val any, err error, current ExecStateControl) ExecStateControl {
+			return current
+		}
+	}
+
+	cfg.execCtrl = func(val any, err error, current ExecStateControl) ExecStateControl {
+		if callBefore {
+			current = wrapper(val, err, current)
+		}
+
+		current = previous(val, err, current)
+
+		if !callBefore {
+			current = wrapper(val, err, current)
+		}
+
+		return current
+	}
+
 	return cfg
 }
 
@@ -613,7 +702,7 @@ func (cfg *flatGrammarConfig) SetFormat(fmt FlatGrammarFormat, sep FlatGrammarSe
 
 func (cfg *flatGrammarConfig) validate() error {
 	switch cfg.format {
-	case FlatFormatDelimited:
+	case FlatFmtDelimited:
 		if len(cfg.separator) != 1 {
 			return GrammarBuildError{
 				Stage:  StageFormatValidation,
@@ -621,7 +710,7 @@ func (cfg *flatGrammarConfig) validate() error {
 				Value:  len(cfg.separator),
 			}
 		}
-	case FlatFormatEnclosed:
+	case FlatFmtEnclosed:
 		if len(cfg.separator) != 2 {
 			return GrammarBuildError{
 				Stage:  StageFormatValidation,
@@ -662,4 +751,63 @@ func (cfg *hierarchyGrammarConfig) validateStructure() error {
 func (cfg *hierarchyGrammarConfig) Build() (Grammar, error) {
 	// $$$TODO $$$SIMON: Implement hierarchy grammar building.
 	panic("not implemented")
+}
+
+//--------------------------------------------------------------------------------
+// Grammar Templates!
+//--------------------------------------------------------------------------------
+
+const (
+	DefaultMaxGrammarOps uint8 = 4
+)
+
+func NewFlatConfigFromTemplate(template FlatGrammarTemplate) FlatGrammarConfig {
+	var (
+		flatFmt FlatGrammarFormat
+		sep     FlatGrammarSeparator
+	)
+
+	switch template {
+	case FGTInlineComma:
+		flatFmt = FlatFmtDelimited
+		sep = InlineSepComma
+	case FGTInlineSemicolon:
+		flatFmt = FlatFmtDelimited
+		sep = InlineSepSemicolon
+	case FGTPairSquare:
+		flatFmt = FlatFmtEnclosed
+		sep = PairSepSquare
+	case FGTPairCurly:
+		flatFmt = FlatFmtEnclosed
+		sep = PairSepCurly
+	case FGTPairParen:
+		flatFmt = FlatFmtEnclosed
+		sep = PairSepParen
+	default:
+		return nil
+	}
+
+	return newDfltGrmrCfg().
+		SetFlatStructure().
+		SetFormat(flatFmt, sep)
+}
+
+func NewHierarchyConfigFromTemplate(template HierarchyGrammarTemplate) HierarchyGrammarConfig {
+	switch template {
+	case HGTJSON:
+		return newDfltGrmrCfg().
+			SetHierarchyStructure().
+			SetFormat(HierarchyFmtJSON)
+	default:
+		return nil
+	}
+}
+
+func newDfltGrmrCfg() GrammarConfig {
+	return NewGrammarConfig().
+		SetMaxOperations(DefaultMaxGrammarOps).
+		AddSharedModifier("omitnil", ModFmtKeyed, ModUseExec, ModKindBool).
+		AddSharedModifier("omitempty", ModFmtKeyed, ModUseExec, ModKindBool).
+		AddSharedModifier("omiterr", ModFmtKeyed, ModUseExec, ModKindBool).
+		AddSharedModifier("default", ModFmtKV, ModUseExec, ModKindConverted)
 }
