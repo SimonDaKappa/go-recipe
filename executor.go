@@ -6,15 +6,18 @@ import (
 	"unsafe"
 )
 
-type ExecStateControl uint8
+type ExecState uint8
 
 const (
-	ExecControl ExecStateControl = iota + 1
-	ExecControlFailCurrent
-	ExecControlFailAll
+	StateInvalid ExecState = iota
+	StateCallWalkFunc
+	StateSkipWalkFunc
+	StateHaltWalk
+	StateNonFatalError
+	StateFatalError
 )
 
-type ExecStateController func(val any, err error, current ExecStateControl) ExecStateControl
+type WalkStateMachine func(val any, err error, current ExecState) ExecState
 
 var (
 	ErrNotPointerKind   = fmt.Errorf("provided type is not pointer")

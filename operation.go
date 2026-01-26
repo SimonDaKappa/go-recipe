@@ -22,6 +22,10 @@ var (
 
 type OpMod uint8
 
+// OpArity specifies the arity of an operation.
+//
+// All Operations within a [Recipe] must have the same arity.
+// or will fail out during execution if they do not match.
 type OpArity uint8
 
 const (

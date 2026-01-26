@@ -17,7 +17,7 @@ type Recipe struct {
 	// See: [RecipeWalkType]
 	WalkType WalkType
 
-	StateController ExecStateController
+	StateController WalkStateMachine
 
 	combiner    Combiner
 	applier     Applier

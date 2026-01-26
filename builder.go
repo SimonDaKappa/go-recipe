@@ -19,6 +19,13 @@ var (
 	ErrUnexpectedStruct = fmt.Errorf("unexpected struct type for non-struct field")
 )
 
+type CacheControl uint8
+
+const (
+	ClearCache CacheControl = iota + 1
+	RebuildCache
+)
+
 type Builder struct {
 	grammar Grammar
 	mu      sync.RWMutex
@@ -31,6 +38,41 @@ func NewBuilder(grammar Grammar) *Builder {
 		mu:      sync.RWMutex{},
 		cache:   make(map[reflect.Type]*Recipe),
 	}
+}
+
+// UpdateGrammar updates the builder's grammar.
+//
+// Depending on the CacheControl, it may clear or rebuild the cache.
+//
+// Warning: Rebuilding the cache may be time-consuming, and if the
+// new grammar is incompatible with the previous one, it will likely
+// result in errors during the rebuild process. Use with caution,
+// and mainly for increasing a grammar's scope.
+//
+// Returns any errors encountered during cache rebuilding.
+func (b *Builder) UpdateGrammar(grammar Grammar, ctrl CacheControl) []error {
+	var errs []error
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.grammar = grammar
+
+	if ctrl == ClearCache {
+		b.cache = make(map[reflect.Type]*Recipe)
+		return nil
+	} else if ctrl == RebuildCache {
+		old := b.cache
+		b.cache = make(map[reflect.Type]*Recipe)
+
+		for wt, _ := range old {
+			_, err := b.Build(wt, true)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("rebuilding recipe for type %s: %w", wt.Name(), err))
+			}
+		}
+	}
+
+	return errs
 }
 
 // Set manually sets a recipe in the cache
